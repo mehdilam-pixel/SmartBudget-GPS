@@ -19,7 +19,7 @@ function harness(options = {}) {
   } } } };
   const ctx = {
     console, Date: Clock, AbortController, Event, URL, URLSearchParams,
-    location: { hash: options.fragment || '', pathname: '/SmartBudget-GPS/', search: '?v=2.5.3' },
+    location: { hash: options.fragment || '', pathname: '/SmartBudget-GPS/', search: '?v=2.5.4' },
     history: { replaceState(_state, _title, url) { if (options.historyBlocked) throw Error('history blocked'); history.push(url); } },
     localStorage: {
       getItem(key) { if (options.storageBlocked) throw Error('storage blocked'); return storage.get(key) || null; },
@@ -121,6 +121,34 @@ test('a response after sign-out cannot revive a session or be mistaken for a com
   await assert.rejects(pending, /session Google a changé.*peut déjà être enregistrée/);
   assert.equal(h.get('googleLogin').hidden, false);
 });
+test('identical concurrent reads share one call, while later reads and all writes remain fresh', async () => {
+  const h = harness(); await h.connect(); assert.equal(h.ctx.BudgetOAuth.isConnected(), true);
+  const complete = []; h.setFetch(() => new Promise(resolve => complete.push(resolve)));
+  const read = { action: 'operationContext', date: '2026-10-08' };
+  const a = h.ctx.BudgetOAuth.call(read), b = h.ctx.BudgetOAuth.call(read);
+  assert.equal(a, b); assert.equal(h.requests().length, 2);
+  complete.shift()({ ok: true, status: 200, json: async () => ({ done: true, response: { result: { ok: true, data: { balance: 100 } } } }) });
+  assert.equal((await a).data.balance, 100); await b;
+  const fresh = h.ctx.BudgetOAuth.call(read); assert.equal(h.requests().length, 3);
+  complete.shift()({ ok: true, status: 200, json: async () => ({ done: true, response: { result: { ok: true, data: { balance: 200 } } } }) });
+  assert.equal((await fresh).data.balance, 200);
+  const first = h.ctx.BudgetOAuth.call({ action: 'add', operation: { requestId: 'A' } });
+  const second = h.ctx.BudgetOAuth.call({ action: 'add', operation: { requestId: 'A' } });
+  assert.notEqual(first, second); assert.equal(h.requests().length, 5);
+  for (const resolve of complete.splice(0)) resolve({ ok: true, status: 200, json: async () => ({ done: true, response: { result: { ok: true } } }) });
+  await Promise.all([first, second]); h.ctx.BudgetOAuth.signOut(); assert.equal(h.ctx.BudgetOAuth.isConnected(), false);
+});
+test('failed shared reads are discarded and Google expiry is detected even when a background timer is suspended', async () => {
+  const h = harness(); await h.connect(); let fail;
+  h.setFetch(() => new Promise((_resolve, reject) => { fail = reject; }));
+  const a = h.ctx.BudgetOAuth.call({ action: 'dashboard' }), b = h.ctx.BudgetOAuth.call({ action: 'dashboard' });
+  fail(Error('network')); await Promise.all([assert.rejects(a), assert.rejects(b)]);
+  h.setFetch(async () => ({ ok: true, status: 200, json: async () => ({ done: true, response: { result: { ok: true } } }) }));
+  await h.ctx.BudgetOAuth.call({ action: 'dashboard' }); assert.equal(h.requests().length, 3);
+  h.setClock(1000000 + 3300000); assert.equal(h.ctx.BudgetOAuth.isConnected(), false);
+  h.listeners.focus(); assert.equal(h.get('googleLogin').hidden, false);
+  await assert.rejects(h.ctx.BudgetOAuth.call({ action: 'dashboard' }), /Reconnectez-vous/); assert.equal(h.requests().length, 3);
+});
 test('Google runtime errors preserve meaningful backend error; 404 and 429 remain explicit', async () => {
   const h = harness(); await h.connect();
   h.setFetch(async () => ({ ok: true, json: async () => ({ error: { details: [{ errorMessage: 'Corrigez le journal à la ligne 2' }] } }) }));
@@ -142,7 +170,7 @@ test('personal link remembers only the account preference, removes it from the U
   const h = harness({ fragment: '#account=owner%40example.invalid&view=home' }); await tick();
   assert.equal(h.clients.length, 0); assert.equal(h.requests().length, 0);
   assert.deepEqual(h.writes, [['budgetsmart-google-account', 'owner@example.invalid']]);
-  assert.deepEqual(h.history, ['/SmartBudget-GPS/?v=2.5.3#view=home']);
+  assert.deepEqual(h.history, ['/SmartBudget-GPS/?v=2.5.4#view=home']);
   await h.connect(); assert.equal(h.clients[0].login_hint, 'owner@example.invalid'); assert.equal(h.clients[0].prompt, '');
   assert.deepEqual(h.clients[0].scope.split(' '), SCOPES);
   await h.ctx.BudgetOAuth.call({ action: 'login', pin: '654321' });
@@ -161,7 +189,7 @@ test('invalid account input is ignored and blocked storage or history does not b
   for (const value of ['not-an-email', '<img>@example.invalid', 'a'.repeat(250) + '@example.invalid']) {
     const h = harness({ fragment: '#account=' + encodeURIComponent(value) }); await h.connect();
     assert.equal(h.clients[0].login_hint, undefined); assert.equal(h.storage.size, 0);
-    assert.deepEqual(h.history, ['/SmartBudget-GPS/?v=2.5.3']);
+    assert.deepEqual(h.history, ['/SmartBudget-GPS/?v=2.5.4']);
   }
   const fallback = harness({ fragment: '#account=invalid', storage: new Map([['budgetsmart-google-account', 'owner@example.invalid']]) });
   await fallback.connect(); assert.equal(fallback.clients[0].login_hint, 'owner@example.invalid'); assert.equal(fallback.writes.length, 0);
@@ -179,5 +207,5 @@ test('production bundle has no iframe, demo payload, PIN, financial dataset or p
   for (const script of html.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/g)) new vm.Script(script[1]);
   assert.equal(source.includes('sessionStorage'), false);
   const sw = fs.readFileSync(path.join(__dirname, '..', 'sw.js'), 'utf8');
-  assert.equal(sw.includes('config.json'), false); assert.equal(sw.includes('script.googleapis.com'), false); assert.match(sw, /v2\.5\.3/);
+  assert.equal(sw.includes('config.json'), false); assert.equal(sw.includes('script.googleapis.com'), false); assert.match(sw, /v2\.5\.4/);
 });

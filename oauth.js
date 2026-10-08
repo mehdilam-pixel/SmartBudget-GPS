@@ -1,4 +1,4 @@
-/* SmartBudget GPS PWA 2.5.3: private Google OAuth transport, no financial cache. */
+/* SmartBudget GPS PWA 2.5.4: private Google OAuth transport, no financial cache. */
 (() => {
   'use strict';
   const SCOPES = [
@@ -43,6 +43,7 @@
   const error = document.getElementById('googleError');
   let config, prepared = false, preparing, auth, attempt = 0, generation = 0;
   let connecting = false, expiryTimer, popupTimer, installPrompt;
+  const inFlightReads = new Map();
   let firstConnectionResolve;
   const firstConnection = new Promise(resolve => { firstConnectionResolve = resolve; });
 
@@ -55,6 +56,7 @@
   function forget() {
     generation++;
     auth = null;
+    inFlightReads.clear();
     clearTimeout(expiryTimer);
   }
   function releaseAttempt() {
@@ -244,7 +246,19 @@
 
   window.BudgetOAuth = Object.freeze({
     whenConnected: () => firstConnection,
-    call: request => execute(request),
+    isConnected: () => Boolean(usable()),
+    call: request => {
+      if (!request || !READS.has(request.action) || request.action === 'login') return execute(request);
+      // Share only identical reads already in progress. Completed values are
+      // never cached, and writes always retain their own request/idempotency key.
+      const key = generation + ':' + JSON.stringify(request);
+      if (inFlightReads.has(key)) return inFlightReads.get(key);
+      const promise = execute(request);
+      inFlightReads.set(key, promise);
+      const remove = () => { if (inFlightReads.get(key) === promise) inFlightReads.delete(key); };
+      promise.then(remove, remove);
+      return promise;
+    },
     signOut: () => {
       attempt++; forget(); releaseAttempt();
       showGate('Vous êtes déconnecté de BudgetSmart.');
@@ -255,6 +269,13 @@
     if (!gate.hidden) showGate('Une connexion Internet est nécessaire pour ouvrir votre budget.', true);
   });
   window.addEventListener('online', () => { if (!prepared) prepare(); });
+  const resume = () => {
+    if (auth && !usable()) showGate('Votre connexion Google doit être renouvelée.');
+  };
+  window.addEventListener('focus', resume);
+  document.addEventListener?.('visibilitychange', () => {
+    if (document.visibilityState === 'visible') resume();
+  });
   window.addEventListener('beforeinstallprompt', event => {
     event.preventDefault(); installPrompt = event;
     document.querySelectorAll('.pwaInstall').forEach(item => { item.hidden = false; });

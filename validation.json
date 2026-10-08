@@ -1,34 +1,65 @@
 {
-  "pwaVersion": "2.5.3",
-  "backendVersion": "2.5.1",
+  "pwaVersion": "2.5.4",
+  "backendAdapterVersion": "2.5.4",
+  "financialEngineVersion": "2.5.1",
+  "backendDeployment": "pending_owner_installation_and_existing_deployment_update",
   "validation": {
-    "oauthTransportTests": 14,
-    "oauthTransportTestsPassed": 14,
-    "compiledUiIntegrationChecks": 29,
-    "compiledUiIntegrationPassed": true,
-    "unchangedGpsUiSha256": "cd4045051928cce580d72378dfbc43a2715ab91233c38a3b34bc1c4ad195ca21",
-    "unchangedFinancialUiSha256": "4b90eeae9a0f371ce2bba8657ac8020474e3f0afac36c13cd5a099b7c49b8e63",
-    "financialUiModifiedInThisRelease": false,
+    "regressionSuites": 47,
+    "regressionAssertions": 134109,
+    "oauthTestsPassed": 16,
+    "compiledOAuthUiChecks": 29,
+    "combinedRefreshUiChecks": 25,
+    "combinedRefreshAdapterChecks": 44,
     "spreadsheetWritesDuringTests": 0,
-    "liveGoogleAuthentication": {
-      "pc": "pending_owner_validation_after_migration",
-      "androidChrome": "pending_owner_validation_after_migration"
-    },
-    "existingAndroidInstallation": "owner_previously_confirmed_installation; reopening_with_new_account_pending"
+    "productionGoogleLatencyMeasured": false,
+    "liveAuthenticationNewRelease": "pending_owner_validation",
+    "financialEnginesUnchanged": true,
+    "nativeWriteHelpersUnchanged": true,
+    "markupAndStylesUnchanged": true,
+    "nativeSpreadsheetPreservation": {
+      "checkedTabs": 9,
+      "enteredValuesFormulasFormatsValidationNotesUnchanged": true,
+      "sheetMetadataConditionalRulesUnchanged": true
+    }
   },
-  "migration": {
-    "source": "native_backup_before_service_2026-10-07",
-    "postBackupChanges": "pending_revalidation",
-    "backendChange": "spreadsheet_identifier_only",
-    "latencyOptimization": "pending_separate_pass"
+  "callCounts": {
+    "settingsSave": {
+      "before": 3,
+      "after": 1,
+      "requiresUpdatedBackend": true
+    },
+    "operationSave": {
+      "before": 2,
+      "after": 1,
+      "requiresUpdatedBackend": true
+    },
+    "forecastHorizonSave": {
+      "before": 2,
+      "after": 1,
+      "requiresUpdatedBackend": true
+    }
   },
   "privacy": {
-    "financialDatasetPublished": false,
-    "ownerEmailPublishedInRepository": false,
-    "clientSecretPublished": false,
-    "googleTokenPersistentStorage": false,
-    "accountPreferenceLocalStorage": true,
-    "financialServiceWorkerCache": false,
-    "automaticMutationRetry": false
-  }
+    "persistentGoogleTokens": false,
+    "ownerEmailInRepository": false,
+    "financialDataCache": false,
+    "automaticMutationRetry": false,
+    "sharedReads": "identical_in_flight_only"
+  },
+  "connection": {
+    "preferredAccountRetained": true,
+    "forcedAccountChooser": false,
+    "expiryCheckedOnResume": true,
+    "logoutHidesBudgetImmediately": true
+  },
+  "sourceHashes": {
+    "Engine.gs": "c4bc88158a61f2a321d10c27107b0af16523bad4e44b01d82a5896dfc2521e21",
+    "GPS.gs": "61d41c54ed2ef33597310486947116899dee3e8780fefacb9c9cd117909b2083"
+  },
+  "pending": [
+    "Install complete backend source on the owner account",
+    "Update existing private API deployment keeping its URL and access",
+    "Measure actual PC and Android action times",
+    "Revalidate initial data recovered from Oct 7 backup"
+  ]
 }
