@@ -10,6 +10,7 @@ const config = { clientId: '123456789-synthetic.apps.googleusercontent.com', api
 const tick = () => new Promise(resolve => setImmediate(resolve));
 function harness(options = {}) {
   const elements = new Map(), listeners = {}, timers = new Map(), clients = [], calls = [], installs = [{ hidden: true }, { hidden: true }];
+  const storage = options.storage || new Map(), history = [], writes = [];
   let timer = 0, clock = 1000000, fetchHandler = options.fetchHandler;
   class Clock extends Date { static now() { return clock; } }
   const get = id => { if (!elements.has(id)) elements.set(id, { hidden: false, textContent: '', disabled: false }); return elements.get(id); };
@@ -17,7 +18,14 @@ function harness(options = {}) {
     clients.push(value); return { requestAccessToken: () => { calls.push({ popup: true }); if (options.popupError) value.error_callback({ type: options.popupError }); } };
   } } } };
   const ctx = {
-    console, Date: Clock, AbortController, Event, URL, navigator: { onLine: true, serviceWorker: { register: async (...args) => { calls.push({ serviceWorker: args }); } } },
+    console, Date: Clock, AbortController, Event, URL, URLSearchParams,
+    location: { hash: options.fragment || '', pathname: '/SmartBudget-GPS/', search: '?v=2.5.3' },
+    history: { replaceState(_state, _title, url) { if (options.historyBlocked) throw Error('history blocked'); history.push(url); } },
+    localStorage: {
+      getItem(key) { if (options.storageBlocked) throw Error('storage blocked'); return storage.get(key) || null; },
+      setItem(key, value) { if (options.storageBlocked) throw Error('storage blocked'); writes.push([key, value]); storage.set(key, value); }
+    },
+    navigator: { onLine: true, serviceWorker: { register: async (...args) => { calls.push({ serviceWorker: args }); } } },
     document: { getElementById: get, querySelectorAll: () => installs, createElement: () => ({ remove() {} }), head: { appendChild(script) { ctx.google = sdk; queueMicrotask(() => script.onload?.()); } } },
     setTimeout: (fn, ms) => { const id = ++timer; timers.set(id, { fn, ms }); return id; }, clearTimeout: id => timers.delete(id),
     addEventListener: (name, fn) => { listeners[name] = fn; }, dispatchEvent: e => listeners[e.type]?.(e),
@@ -34,7 +42,7 @@ function harness(options = {}) {
   const expire = ms => { for (const [id, value] of [...timers]) if (value.ms === ms) { timers.delete(id); value.fn(); } };
   const tokenResponse = (overrides = {}) => ({ access_token: 'synthetic-access-token', expires_in: 3600, token_type: 'Bearer', scope: SCOPES.join(' '), ...overrides });
   const connect = async (overrides = {}) => { await tick(); get('googleConnect').onclick(); await clients.at(-1).callback(tokenResponse(overrides)); await tick(); };
-  return { ctx, get, calls, clients, listeners, timers, installs, connect, expire, tokenResponse,
+  return { ctx, get, calls, clients, listeners, timers, installs, connect, expire, tokenResponse, storage, history, writes,
     setClock: value => { clock = value; }, setFetch: value => { fetchHandler = value; }, requests: () => calls.filter(c => c.url === config.apiUrl) };
 }
 
@@ -43,7 +51,7 @@ test('Google authorization only starts from a click; null probe precedes PIN and
   assert.equal(h.clients.length, 0); assert.equal(h.get('googleConnect').disabled, false);
   let ready = false; h.ctx.BudgetOAuth.whenConnected().then(() => { ready = true; });
   await h.connect(); assert.equal(ready, true); assert.equal(h.get('googleLogin').hidden, true);
-  const consent = h.clients[0]; assert.equal(consent.include_granted_scopes, false); assert.equal(consent.prompt, 'select_account');
+  const consent = h.clients[0]; assert.equal(consent.include_granted_scopes, false); assert.equal(consent.prompt, ''); assert.equal(consent.login_hint, undefined);
   assert.deepEqual(consent.scope.split(' '), SCOPES);
   const probe = h.requests()[0]; assert.deepEqual(JSON.parse(probe.request.body), { function: 'api_request', parameters: [null], devMode: false });
   assert.equal(probe.request.credentials, 'omit'); assert.equal(probe.request.cache, 'no-store');
@@ -130,13 +138,46 @@ test('configuration rejects token exfiltration endpoint; SDK loader and install 
   let prompts = 0; h.listeners.beforeinstallprompt({ preventDefault() {}, prompt: async () => { prompts++; } });
   assert.equal(h.installs[0].hidden, false); await h.installs[0].onclick(); assert.equal(prompts, 1); assert.equal(h.installs[1].hidden, true);
 });
+test('personal link remembers only the account preference, removes it from the URL and does not trigger authorization', async () => {
+  const h = harness({ fragment: '#account=owner%40example.invalid&view=home' }); await tick();
+  assert.equal(h.clients.length, 0); assert.equal(h.requests().length, 0);
+  assert.deepEqual(h.writes, [['budgetsmart-google-account', 'owner@example.invalid']]);
+  assert.deepEqual(h.history, ['/SmartBudget-GPS/?v=2.5.3#view=home']);
+  await h.connect(); assert.equal(h.clients[0].login_hint, 'owner@example.invalid'); assert.equal(h.clients[0].prompt, '');
+  assert.deepEqual(h.clients[0].scope.split(' '), SCOPES);
+  await h.ctx.BudgetOAuth.call({ action: 'login', pin: '654321' });
+  assert.equal(h.storage.size, 1); assert.equal(h.calls.some(c => c.url?.includes('owner')), false);
+  assert.deepEqual(h.writes, [['budgetsmart-google-account', 'owner@example.invalid']]);
+});
+test('the account survives a reload and sign-out while Google tokens are never persisted', async () => {
+  const first = harness({ fragment: '#account=owner%40example.invalid' }); await first.connect();
+  first.ctx.BudgetOAuth.signOut();
+  const next = harness({ storage: first.storage }); await next.connect();
+  assert.equal(next.clients[0].login_hint, 'owner@example.invalid'); assert.equal(next.history.length, 0);
+  next.ctx.BudgetOAuth.signOut(); await next.connect(); assert.equal(next.clients[1].login_hint, 'owner@example.invalid');
+  assert.deepEqual([...next.storage], [['budgetsmart-google-account', 'owner@example.invalid']]); assert.equal(next.writes.length, 0);
+});
+test('invalid account input is ignored and blocked storage or history does not block connection', async () => {
+  for (const value of ['not-an-email', '<img>@example.invalid', 'a'.repeat(250) + '@example.invalid']) {
+    const h = harness({ fragment: '#account=' + encodeURIComponent(value) }); await h.connect();
+    assert.equal(h.clients[0].login_hint, undefined); assert.equal(h.storage.size, 0);
+    assert.deepEqual(h.history, ['/SmartBudget-GPS/?v=2.5.3']);
+  }
+  const fallback = harness({ fragment: '#account=invalid', storage: new Map([['budgetsmart-google-account', 'owner@example.invalid']]) });
+  await fallback.connect(); assert.equal(fallback.clients[0].login_hint, 'owner@example.invalid'); assert.equal(fallback.writes.length, 0);
+  const corrupt = harness({ storage: new Map([['budgetsmart-google-account', 'invalid']]) }); await corrupt.connect(); assert.equal(corrupt.clients[0].login_hint, undefined);
+  for (const option of ['storageBlocked', 'historyBlocked']) {
+    const h = harness({ [option]: true, fragment: '#account=owner%40example.invalid' }); await h.connect();
+    assert.equal(h.clients[0].login_hint, 'owner@example.invalid'); assert.equal(h.get('googleLogin').hidden, true);
+  }
+});
 test('production bundle has no iframe, demo payload, PIN, financial dataset or persistent Google token', () => {
   const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
   assert.equal(/<iframe\b/i.test(html), false); assert.equal(html.includes('DEMO_API=async'), false);
   const markup = html.replace(/<script\b[^>]*>[\s\S]*?<\/script>/g, '').replace(/<style\b[^>]*>[\s\S]*?<\/style>/g, '');
   const ids = [...markup.matchAll(/\bid="([^"]+)"/g)].map(match => match[1]); assert.equal(ids.length, new Set(ids).size);
   for (const script of html.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/g)) new vm.Script(script[1]);
-  assert.equal(source.includes('localStorage'), false); assert.equal(source.includes('sessionStorage'), false);
+  assert.equal(source.includes('sessionStorage'), false);
   const sw = fs.readFileSync(path.join(__dirname, '..', 'sw.js'), 'utf8');
-  assert.equal(sw.includes('config.json'), false); assert.equal(sw.includes('script.googleapis.com'), false); assert.match(sw, /v2\.5\.2/);
+  assert.equal(sw.includes('config.json'), false); assert.equal(sw.includes('script.googleapis.com'), false); assert.match(sw, /v2\.5\.3/);
 });

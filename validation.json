@@ -1,32 +1,33 @@
 {
-  "pwaVersion": "2.5.2",
+  "pwaVersion": "2.5.3",
   "backendVersion": "2.5.1",
   "validation": {
-    "oauthTransportTests": 11,
-    "oauthTransportTestsPassed": 11,
-    "compiledUiIntegrationChecks": 25,
+    "oauthTransportTests": 14,
+    "oauthTransportTestsPassed": 14,
+    "compiledUiIntegrationChecks": 29,
     "compiledUiIntegrationPassed": true,
     "unchangedGpsUiSha256": "cd4045051928cce580d72378dfbc43a2715ab91233c38a3b34bc1c4ad195ca21",
-    "financialUiChanges": [
-      "OAuth transport",
-      "Google logout hook",
-      "Google connection gate",
-      "Read-only refresh after Google reconnection"
-    ],
-    "backendFilesModified": 0,
+    "unchangedFinancialUiSha256": "4b90eeae9a0f371ce2bba8657ac8020474e3f0afac36c13cd5a099b7c49b8e63",
+    "financialUiModifiedInThisRelease": false,
     "spreadsheetWritesDuringTests": 0,
     "liveGoogleAuthentication": {
-      "pc": "owner_confirmed_dashboard_displayed",
-      "androidChrome": "owner_confirmed_dashboard_displayed",
-      "confirmedDate": "2026-10-08",
-      "testedPath": "/SmartBudget-GPS/validation/"
+      "pc": "pending_owner_validation_after_migration",
+      "androidChrome": "pending_owner_validation_after_migration"
     },
-    "androidInstallation": "pending_owner_validation"
+    "existingAndroidInstallation": "owner_previously_confirmed_installation; reopening_with_new_account_pending"
+  },
+  "migration": {
+    "source": "native_backup_before_service_2026-10-07",
+    "postBackupChanges": "pending_revalidation",
+    "backendChange": "spreadsheet_identifier_only",
+    "latencyOptimization": "pending_separate_pass"
   },
   "privacy": {
     "financialDatasetPublished": false,
+    "ownerEmailPublishedInRepository": false,
     "clientSecretPublished": false,
     "googleTokenPersistentStorage": false,
+    "accountPreferenceLocalStorage": true,
     "financialServiceWorkerCache": false,
     "automaticMutationRetry": false
   }

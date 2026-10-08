@@ -1,4 +1,4 @@
-/* SmartBudget GPS PWA 2.5.2: private Google OAuth transport, no financial cache. */
+/* SmartBudget GPS PWA 2.5.3: private Google OAuth transport, no financial cache. */
 (() => {
   'use strict';
   const SCOPES = [
@@ -8,6 +8,35 @@
   ];
   const READS = new Set(['login', 'dashboard', 'configuration', 'gpsConfiguration',
     'operationContext', 'incomeSuggestion', 'requestStatus', 'export']);
+  const ACCOUNT_KEY = 'budgetsmart-google-account';
+  const validAccount = value => typeof value === 'string' && value.length <= 254 &&
+    /^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(value);
+  function preferredAccount() {
+    let account = '';
+    try {
+      const fragment = new URLSearchParams(window.location.hash.slice(1));
+      if (fragment.has('account')) {
+        const supplied = fragment.get('account').trim();
+        if (validAccount(supplied)) {
+          account = supplied;
+          // Remember only a non-secret account preference, never an access token.
+          try { window.localStorage.setItem(ACCOUNT_KEY, account); } catch {}
+        }
+        fragment.delete('account');
+        const remaining = fragment.toString();
+        window.history.replaceState(null, '', window.location.pathname + window.location.search +
+          (remaining ? '#' + remaining : ''));
+      }
+    } catch {}
+    if (!account) {
+      try {
+        const stored = window.localStorage.getItem(ACCOUNT_KEY);
+        if (validAccount(stored)) account = stored;
+      } catch {}
+    }
+    return account;
+  }
+  const loginHint = preferredAccount();
   const gate = document.getElementById('googleLogin');
   const button = document.getElementById('googleConnect');
   const status = document.getElementById('googleStatus');
@@ -140,7 +169,8 @@
     connecting = true;
     const sequence = ++attempt;
     button.disabled = true; button.textContent = 'Connexion Google…';
-    showGate('Choisissez le compte Google propriétaire de votre budget dans la fenêtre Google.');
+    showGate(loginHint ? 'Connexion avec votre compte Google habituel…' :
+      'Confirmez la connexion à votre compte Google dans la fenêtre Google.');
     popupTimer = setTimeout(() => {
       if (sequence !== attempt) return;
       attempt++; releaseAttempt();
@@ -150,7 +180,8 @@
       // Called synchronously from the click, preserving browser popup permission.
       const client = google.accounts.oauth2.initTokenClient({
         client_id: config.clientId, scope: SCOPES.join(' '), include_granted_scopes: false,
-        prompt: 'select_account',
+        prompt: '',
+        ...(loginHint ? { login_hint: loginHint } : {}),
         callback: response => acceptToken(response, sequence),
         error_callback: failure => {
           if (sequence !== attempt || !connecting) return;
@@ -202,7 +233,8 @@
     showGate('Préparation de la connexion sécurisée…');
     preparing = Promise.all([readConfiguration(), loadIdentity()]).then(([value]) => {
       config = value; prepared = true; releaseAttempt();
-      showGate('Connectez-vous avec le compte Google propriétaire de votre budget.');
+      showGate(loginHint ? 'Compte Google : ' + loginHint :
+        'Connectez-vous avec le compte Google propriétaire de votre budget.');
     }).catch(() => {
       prepared = false; releaseAttempt();
       showGate('La connexion Google n’a pas pu être préparée. Vérifiez votre accès Internet puis réessayez.', true);
