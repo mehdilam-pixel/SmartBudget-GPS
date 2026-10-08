@@ -1,0 +1,28 @@
+{
+  "pwaVersion": "2.5.2",
+  "backendVersion": "2.5.1",
+  "validation": {
+    "oauthTransportTests": 11,
+    "oauthTransportTestsPassed": 11,
+    "compiledUiIntegrationChecks": 25,
+    "compiledUiIntegrationPassed": true,
+    "unchangedGpsUiSha256": "cd4045051928cce580d72378dfbc43a2715ab91233c38a3b34bc1c4ad195ca21",
+    "financialUiChanges": [
+      "OAuth transport",
+      "Google logout hook",
+      "Google connection gate",
+      "Read-only refresh after Google reconnection"
+    ],
+    "backendFilesModified": 0,
+    "spreadsheetWritesDuringTests": 0,
+    "liveGoogleAuthentication": "pending_owner_validation",
+    "androidInstallation": "pending_owner_validation"
+  },
+  "privacy": {
+    "financialDatasetPublished": false,
+    "clientSecretPublished": false,
+    "googleTokenPersistentStorage": false,
+    "financialServiceWorkerCache": false,
+    "automaticMutationRetry": false
+  }
+}
